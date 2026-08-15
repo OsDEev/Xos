@@ -4,10 +4,9 @@ term.setBackgroundColor(colors.black)
 term.clear()
 term.setCursorPos(1, 1)
 
--- Базовый репозиторий (можно заменить на свой GitHub / Pastebin API)
-local REPO_BASE = "https://raw.githubusercontent.com/pastebin/"
+local REPO_BASE = "https://raw.githubusercontent.com/OsDEev/Xos/main/App/"
 
--- Pac-Man ASCII пасхалка
+-- Pac-Man ASCII Logo
 term.setTextColor(colors.yellow)
 print("   .--.   .-. ")
 print("  / _= \\ / -' ")
@@ -16,14 +15,14 @@ print(" | \\====| |   ")
 print("  \\ `--` \\ -._")
 print("   `--`   `--` ")
 term.setTextColor(colors.lime)
-print("=== PAKKUGARU (パックガル) v1.2 ===")
+print("=== PAKKUGARU v1.2 ===")
 print("  'The Package Gobbler' (paku-paku)")
 term.setTextColor(colors.white)
-print("Команды:")
+print("Commands:")
 print(" - list")
-print(" - install <имя_пакета>")
-print(" - install <URL> <имя_файла>")
-print(" - remove <имя_файла>")
+print(" - install <package_name>")
+print(" - install <URL> <filename>")
+print(" - remove <filename>")
 
 write("\npakkugaru> ")
 local input = read()
@@ -33,10 +32,10 @@ for word in input:gmatch("%S+") do table.insert(parts, word) end
 local cmd = parts[1]
 
 if cmd == "list" then
-    print("\nУстановленные программы в /App:")
+    print("\nInstalled apps in /App:")
     local apps = fs.list("App")
     if #apps == 0 then
-        print(" (пусто)")
+        print(" (empty)")
     else
         for _, f in ipairs(apps) do
             print(" - " .. f)
@@ -47,28 +46,24 @@ elseif cmd == "install" then
     local url = ""
     local name = ""
 
-    -- Вариант 1: install <имя_пакета> (из дефолтного репозитория)
     if parts[2] and not parts[3] then
         name = parts[2]
         url = REPO_BASE .. name .. ".lua"
-    -- Вариант 2: install <URL> <имя_файла> (прямая ссылка)
     elseif parts[2] and parts[3] then
         url = parts[2]
         name = parts[3]
     else
         term.setTextColor(colors.red)
-        print("Ошибка: Укажите пакет! Пример: install calc или install https://... app")
+        print("Error: Specify package! Usage: install calc OR install <url> <name>")
     end
 
     if url ~= "" and name ~= "" then
-        -- Авто-добавление .lua к имени
         if not name:find("%.lua$") then
             name = name .. ".lua"
         end
 
         term.setTextColor(colors.yellow)
-        print("Загрузка " .. name .. "...")
-        print("Ссылка: " .. url)
+        print("Gobbling " .. name .. "...")
 
         local res = http.get(url)
         if res then
@@ -77,10 +72,10 @@ elseif cmd == "install" then
             f.close()
             res.close()
             term.setTextColor(colors.lime)
-            print("Успех! Пакет " .. name .. " съеден и сохранен в /App.")
+            print("Success! Package " .. name .. " saved to /App.")
         else
             term.setTextColor(colors.red)
-            print("Ошибка: Не удалось скачать пакет. Проверьте ссылку и включен ли HTTP в конфиге CC.")
+            print("Error: Could not download package.")
         end
     end
 
@@ -92,17 +87,17 @@ elseif cmd == "remove" and parts[2] then
     if fs.exists(path) then
         fs.delete(path)
         term.setTextColor(colors.lime)
-        print("Пакет " .. name .. " удален.")
+        print("Package " .. name .. " removed.")
     else
         term.setTextColor(colors.red)
-        print("Файл " .. name .. " не найден в /App.")
+        print("File " .. name .. " not found in /App.")
     end
 
 else
     term.setTextColor(colors.lightGray)
-    print("Неизвестная команда.")
+    print("Unknown command.")
 end
 
 term.setTextColor(colors.white)
-print("\nНажмите Enter для выхода...")
+print("\nPress Enter to exit...")
 read()
