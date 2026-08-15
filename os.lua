@@ -1,4 +1,4 @@
--- os.lua - Xos Core Kernel with Categorized Tabbed GUI
+-- os.lua - Xos Core Kernel with Categorized Tabbed GUI & Mouse Scroll
 -- Repository: https://github.com/OsDEev/Xos
 
 term.setBackgroundColor(colors.gray)
@@ -15,6 +15,7 @@ local categories = {
 }
 
 local activeTab = "SYSTEM"
+local scrollOffset = 0
 
 local appCategories = {
     ["settings.lua"] = "SYSTEM",
@@ -26,7 +27,6 @@ local appCategories = {
     ["pakkugaru.lua"] = "PACKAGES"
 }
 
--- Helper function to draw colored rectangle blocks
 local function drawRect(x, y, width, height, bgColor)
     term.setBackgroundColor(bgColor)
     for i = 0, height - 1 do
@@ -35,7 +35,6 @@ local function drawRect(x, y, width, height, bgColor)
     end
 end
 
--- App Catalog State
 local apps = {}
 local appButtons = {}
 local tabButtons = {}
@@ -54,6 +53,16 @@ local function scanApps()
     end
 end
 
+local function getFilteredApps()
+    local filtered = {}
+    for _, app in ipairs(apps) do
+        if activeTab == "ALL" or app.category == activeTab then
+            table.insert(filtered, app)
+        end
+    end
+    return filtered
+end
+
 -- Render Desktop UI
 local function drawUI()
     w, h = term.getSize()
@@ -62,7 +71,7 @@ local function drawUI()
     drawRect(1, 1, w, 1, colors.cyan)
     term.setTextColor(colors.black)
     term.setCursorPos(2, 1)
-    term.write("Xos v3.5")
+    term.write("Xos v3.6")
 
     local timeStr = textutils.formatTime(os.time(), true)
     term.setCursorPos(w - #timeStr, 1)
@@ -71,7 +80,7 @@ local function drawUI()
     -- Desktop Background
     drawRect(1, 2, w, h - 2, colors.gray)
 
-    -- Category Tabs Navigation Bar (Row 2 & 3)
+    -- Category Tabs Navigation Bar (Row 3)
     tabButtons = {}
     local tabX = 2
     local tabY = 3
@@ -98,41 +107,55 @@ local function drawUI()
         tabX = tabX + #label + 1
     end
 
-    -- Render Filtered App Buttons
+    -- Render Filtered App Buttons with Scroll
     appButtons = {}
-    local startY = 6
-    local startX = 2
-    local displayedApps = 0
+    local filteredApps = getFilteredApps()
+    local startY = 5
+    local maxVisibleRows = math.floor((h - startY - 1) / 2)
 
-    for _, app in ipairs(apps) do
-        if activeTab == "ALL" or app.category == activeTab then
-            displayedApps = displayedApps + 1
-            local btnX = startX
-            local btnY = startY + (displayedApps - 1) * 2
+    -- Clamp Scroll Offset
+    local maxScroll = math.max(0, #filteredApps - maxVisibleRows)
+    if scrollOffset > maxScroll then scrollOffset = maxScroll end
+    if scrollOffset < 0 then scrollOffset = 0 end
 
-            if btnY >= h - 1 then break end
+    local visibleCount = 0
+    for i = scrollOffset + 1, #filteredApps do
+        local app = filteredApps[i]
+        visibleCount = visibleCount + 1
+        local btnX = 2
+        local btnY = startY + (visibleCount - 1) * 2
 
-            local label = " [ " .. app.name:upper() .. " ] "
-            drawRect(btnX, btnY, #label, 1, colors.blue)
-            term.setTextColor(colors.white)
-            term.setCursorPos(btnX, btnY)
-            term.write(label)
+        if btnY >= h - 1 then break end
 
-            table.insert(appButtons, {
-                x1 = btnX,
-                y1 = btnY,
-                x2 = btnX + #label - 1,
-                y2 = btnY,
-                path = app.path,
-                name = app.name
-            })
-        end
+        local label = " [ " .. app.name:upper() .. " ] "
+        drawRect(btnX, btnY, #label, 1, colors.blue)
+        term.setTextColor(colors.white)
+        term.setCursorPos(btnX, btnY)
+        term.write(label)
+
+        table.insert(appButtons, {
+            x1 = btnX,
+            y1 = btnY,
+            x2 = btnX + #label - 1,
+            y2 = btnY,
+            path = app.path,
+            name = app.name
+        })
     end
 
-    if displayedApps == 0 then
+    if #filteredApps == 0 then
         term.setTextColor(colors.lightGray)
         term.setCursorPos(2, startY)
         term.write("No apps in this category.")
+    end
+
+    -- Scroll Indicator
+    if #filteredApps > maxVisibleRows then
+        term.setTextColor(colors.yellow)
+        term.setCursorPos(w - 1, startY)
+        term.write("^")
+        term.setCursorPos(w - 1, h - 2)
+        term.write("v")
     end
 
     -- Bottom Navigation Bar
@@ -151,7 +174,7 @@ local function drawUI()
     term.write("REFRESH")
 end
 
--- Launch Application inside a Controlled Window Environment
+-- Launch Application inside Window Environment
 local function launchApp(appPath, appName)
     w, h = term.getSize()
 
@@ -216,13 +239,16 @@ drawUI()
 
 local systemRunning = true
 while systemRunning do
-    local event, button, x, y = os.pullEvent()
+    local event, p1, p2, p3 = os.pullEvent()
 
-    if event == "mouse_click" and button == 1 then
+    if event == "mouse_click" and p1 == 1 then
+        local x, y = p2, p3
+
         -- 1. Check Tab Selection
         for _, tabBtn in ipairs(tabButtons) do
             if x >= tabBtn.x1 and x <= tabBtn.x2 and y == tabBtn.y1 then
                 activeTab = tabBtn.id
+                scrollOffset = 0
                 drawUI()
             end
         end
@@ -243,6 +269,12 @@ while systemRunning do
                 drawUI()
             end
         end
+
+    elseif event == "mouse_scroll" then
+        local direction = p1 -- -1 for Up, 1 for Down
+        scrollOffset = scrollOffset + direction
+        drawUI()
+
     elseif event == "term_resize" then
         drawUI()
     end
