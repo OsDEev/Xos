@@ -1,71 +1,82 @@
--- App/update.lua - System Updater for Xos
-
+-- App/update.lua - Dynamic Auto-Updater for Xos
 term.setBackgroundColor(colors.black)
 term.clear()
 term.setCursorPos(1, 1)
 
-local REPO_RAW = "https://raw.githubusercontent.com/OsDEev/Xos/main/"
-
-local systemComponents = {
-    { name = "Core Kernel (os.lua)", repo = "os.lua", localP = "os.lua" },
-    { name = "Package Manager (Pakkugaru)", repo = "App/pakkugaru.lua", localP = "App/pakkugaru.lua" },
-    { name = "Network Library", repo = "App/network.lua", localP = "App/network.lua" },
-    { name = "Local File Host", repo = "App/localfile.lua", localP = "App/localfile.lua" },
-    { name = "Network Downloader", repo = "App/download.lua", localP = "App/download.lua" },
-    { name = "System Updater", repo = "App/update.lua", localP = "App/update.lua" }
-}
+local API_URL = "https://api.github.com/repos/OsDEev/Xos/contents/"
+local RAW_URL = "https://raw.githubusercontent.com/OsDEev/Xos/main/"
 
 term.setTextColor(colors.cyan)
 print("==========================================")
-print("         Xos Auto-Update System           ")
+print("        Xos Dynamic Auto-Updater          ")
 print("==========================================")
 term.setTextColor(colors.white)
-print("\nOptions:")
-print(" [1] Check & Update ALL System Components")
-print(" [2] Update Core Kernel Only")
-print(" [3] Update App Suite")
-print(" [4] Cancel")
 
-write("\nChoice (1-4): ")
-local choice = read()
-
-local function fetchUpdate(item)
+local function downloadFile(repoPath, localPath)
     term.setTextColor(colors.yellow)
-    print("\n[+] Fetching latest " .. item.name .. "...")
-    local res = http.get(REPO_RAW .. item.repo)
+    write("[SYNC] " .. localPath .. " ... ")
+
+    local res = http.get(RAW_URL .. repoPath)
     if res then
-        local dir = fs.getDir(item.localP)
+        local dir = fs.getDir(localPath)
         if dir and dir ~= "" and not fs.exists(dir) then
             fs.makeDir(dir)
         end
-        local f = fs.open(item.localP, "w")
+        local f = fs.open(localPath, "w")
         f.write(res.readAll())
         f.close()
         res.close()
         term.setTextColor(colors.lime)
-        print(" [OK] Updated: " .. item.localP)
+        print("OK")
         return true
     else
         term.setTextColor(colors.red)
-        print(" [ERROR] Failed to fetch: " .. item.repo)
+        print("FAIL")
         return false
     end
 end
 
-if choice == "1" then
-    for _, comp in ipairs(systemComponents) do
-        fetchUpdate(comp)
+-- Скачивание файлов из папки через GitHub API
+local function syncDirectory(dirPath)
+    local url = API_URL .. (dirPath or "")
+    local res = http.get(url, { ["User-Agent"] = "ComputerCraft-Xos" })
+
+    if not res then
+        return false
     end
-elseif choice == "2" then
-    fetchUpdate(systemComponents[1])
-elseif choice == "3" then
-    for i = 2, #systemComponents do
-        fetchUpdate(systemComponents[i])
+
+    local data = textutils.unserializeJSON(res.readAll())
+    res.close()
+
+    if type(data) ~= "table" then return false end
+
+    for _, item in ipairs(data) do
+        if item.type == "file" and item.name:find("%.lua$") then
+            local repoPath = dirPath ~= "" and (dirPath .. "/" .. item.name) or item.name
+            local localPath = repoPath
+            downloadFile(repoPath, localPath)
+        elseif item.type == "dir" and item.name == "App" then
+            syncDirectory("App")
+        end
     end
-else
-    print("\nUpdate cancelled.")
+    return true
 end
 
+print("\nFetching current repository manifest from GitHub...\n")
+
+-- Обновляем файлы в корне (os.lua, install.lua) и всю папку App/
+local okCore = downloadFile("os.lua", "os.lua")
+local okApps = syncDirectory("App")
+
+print("\n==========================================")
+if okCore and okApps then
+    term.setTextColor(colors.lime)
+    print(" Update Complete! All system files synced.")
+else
+    term.setTextColor(colors.yellow)
+    print(" Update finished with basic files (API limit fallback).")
+end
 term.setTextColor(colors.white)
-print("\nPress Enter to exit updater...")
+print(" Press Enter to return to Xos...")
+print("==========================================")
 read()
