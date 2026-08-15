@@ -1,10 +1,30 @@
--- os.lua - Xos Core Kernel with Window Task Manager & Controls
+-- os.lua - Xos Core Kernel with Categorized Tabbed GUI
 -- Repository: https://github.com/OsDEev/Xos
 
 term.setBackgroundColor(colors.gray)
 term.clear()
 
 local w, h = term.getSize()
+
+-- Categorization Registry
+local categories = {
+    { id = "SYSTEM", name = "SYSTEM" },
+    { id = "FILES", name = "FILES" },
+    { id = "PACKAGES", name = "PACKAGES" },
+    { id = "ALL", name = "ALL APPS" }
+}
+
+local activeTab = "SYSTEM"
+
+local appCategories = {
+    ["settings.lua"] = "SYSTEM",
+    ["update.lua"] = "SYSTEM",
+    ["terminal.lua"] = "SYSTEM",
+    ["explorer.lua"] = "FILES",
+    ["localfile.lua"] = "FILES",
+    ["download.lua"] = "FILES",
+    ["pakkugaru.lua"] = "PACKAGES"
+}
 
 -- Helper function to draw colored rectangle blocks
 local function drawRect(x, y, width, height, bgColor)
@@ -18,6 +38,7 @@ end
 -- App Catalog State
 local apps = {}
 local appButtons = {}
+local tabButtons = {}
 
 local function scanApps()
     apps = {}
@@ -26,7 +47,8 @@ local function scanApps()
         for _, file in ipairs(files) do
             if not fs.isDir("App/" .. file) and file:find("%.lua$") then
                 local appName = file:gsub("%.lua$", "")
-                table.insert(apps, { name = appName, path = "App/" .. file })
+                local category = appCategories[file] or "ALL"
+                table.insert(apps, { name = appName, path = "App/" .. file, file = file, category = category })
             end
         end
     end
@@ -40,7 +62,7 @@ local function drawUI()
     drawRect(1, 1, w, 1, colors.cyan)
     term.setTextColor(colors.black)
     term.setCursorPos(2, 1)
-    term.write("Xos v2.5")
+    term.write("Xos v3.5")
 
     local timeStr = textutils.formatTime(os.time(), true)
     term.setCursorPos(w - #timeStr, 1)
@@ -49,24 +71,44 @@ local function drawUI()
     -- Desktop Background
     drawRect(1, 2, w, h - 2, colors.gray)
 
-    -- App Catalog Header
-    term.setTextColor(colors.white)
-    term.setCursorPos(2, 3)
-    term.write("=== APP CATALOG ===")
+    -- Category Tabs Navigation Bar (Row 2 & 3)
+    tabButtons = {}
+    local tabX = 2
+    local tabY = 3
 
-    -- Render App Buttons
+    for _, tab in ipairs(categories) do
+        local isSelected = (tab.id == activeTab)
+        local label = " " .. tab.name .. " "
+        local bgColor = isSelected and colors.blue or colors.lightGray
+        local textColor = isSelected and colors.white or colors.black
+
+        drawRect(tabX, tabY, #label, 1, bgColor)
+        term.setTextColor(textColor)
+        term.setCursorPos(tabX, tabY)
+        term.write(label)
+
+        table.insert(tabButtons, {
+            x1 = tabX,
+            y1 = tabY,
+            x2 = tabX + #label - 1,
+            y2 = tabY,
+            id = tab.id
+        })
+
+        tabX = tabX + #label + 1
+    end
+
+    -- Render Filtered App Buttons
     appButtons = {}
-    local startY = 5
+    local startY = 6
     local startX = 2
+    local displayedApps = 0
 
-    if #apps == 0 then
-        term.setTextColor(colors.lightGray)
-        term.setCursorPos(2, startY)
-        term.write("No apps found in /App folder.")
-    else
-        for i, app in ipairs(apps) do
+    for _, app in ipairs(apps) do
+        if activeTab == "ALL" or app.category == activeTab then
+            displayedApps = displayedApps + 1
             local btnX = startX
-            local btnY = startY + (i - 1) * 2
+            local btnY = startY + (displayedApps - 1) * 2
 
             if btnY >= h - 1 then break end
 
@@ -87,15 +129,21 @@ local function drawUI()
         end
     end
 
+    if displayedApps == 0 then
+        term.setTextColor(colors.lightGray)
+        term.setCursorPos(2, startY)
+        term.write("No apps in this category.")
+    end
+
     -- Bottom Navigation Bar
     drawRect(1, h, w, 1, colors.lightGray)
-    
+
     -- EXIT Button
     drawRect(2, h, 8, 1, colors.red)
     term.setTextColor(colors.white)
     term.setCursorPos(3, h)
     term.write("EXIT")
-    
+
     -- REFRESH Button
     drawRect(12, h, 10, 1, colors.lime)
     term.setTextColor(colors.black)
@@ -107,19 +155,14 @@ end
 local function launchApp(appPath, appName)
     w, h = term.getSize()
 
-    -- Create sub-window for the app (leaving row 1 for the Xos Title Bar)
     local appWin = window.create(term.current(), 1, 2, w, h - 1, true)
 
-    -- Function to draw the Top Application Bar
     local function drawAppHeader()
         drawRect(1, 1, w, 1, colors.gray)
-        
-        -- Title
         term.setCursorPos(2, 1)
         term.setTextColor(colors.white)
         term.write("App: " .. appName)
 
-        -- Close Button [ X ]
         drawRect(w - 4, 1, 5, 1, colors.red)
         term.setTextColor(colors.white)
         term.setCursorPos(w - 3, 1)
@@ -128,10 +171,8 @@ local function launchApp(appPath, appName)
 
     drawAppHeader()
 
-    -- Redirect output to window
     local oldTerm = term.redirect(appWin)
-    
-    -- Run the app in a coroutine with event interceptor
+
     local appThread = coroutine.create(function()
         shell.run(appPath)
     end)
@@ -140,7 +181,6 @@ local function launchApp(appPath, appName)
     local eventData = {}
 
     while appRunning and coroutine.status(appThread) ~= "dead" do
-        -- Resume application execution
         local ok, param = coroutine.resume(appThread, table.unpack(eventData))
         if not ok then
             term.redirect(oldTerm)
@@ -154,24 +194,17 @@ local function launchApp(appPath, appName)
 
         if coroutine.status(appThread) == "dead" then break end
 
-        -- Intercept mouse & system events
         eventData = { os.pullEvent() }
         local eventName = eventData[1]
 
         if eventName == "mouse_click" then
             local mouseBtn, clickX, clickY = eventData[2], eventData[3], eventData[4]
-
-            -- Check if click happened on the top Xos Title Bar (y == 1)
-            if clickY == 1 then
-                -- Clicked Close Button [X]
-                if clickX >= w - 4 then
-                    appRunning = false
-                end
+            if clickY == 1 and clickX >= w - 4 then
+                appRunning = false
             end
         end
     end
 
-    -- Restore parent terminal redirection
     term.redirect(oldTerm)
     scanApps()
     drawUI()
@@ -186,19 +219,25 @@ while systemRunning do
     local event, button, x, y = os.pullEvent()
 
     if event == "mouse_click" and button == 1 then
-        -- 1. Check App Selection
+        -- 1. Check Tab Selection
+        for _, tabBtn in ipairs(tabButtons) do
+            if x >= tabBtn.x1 and x <= tabBtn.x2 and y == tabBtn.y1 then
+                activeTab = tabBtn.id
+                drawUI()
+            end
+        end
+
+        -- 2. Check App Selection
         for _, btn in ipairs(appButtons) do
             if x >= btn.x1 and x <= btn.x2 and y == btn.y1 then
                 launchApp(btn.path, btn.name)
             end
         end
 
-        -- 2. Bottom Controls
+        -- 3. Bottom Controls
         if y == h then
-            -- EXIT System
             if x >= 2 and x <= 9 then
                 systemRunning = false
-            -- REFRESH Catalog
             elseif x >= 12 and x <= 21 then
                 scanApps()
                 drawUI()
