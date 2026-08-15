@@ -1,5 +1,4 @@
--- App/pakkugaru.lua - Smart Package Manager & GitHub Parser for Xos
--- Repository: https://github.com/OsDEev/Xos
+-- App/pakkugaru.lua - Package Manager with Pastebin & GitHub support
 
 term.setBackgroundColor(colors.black)
 term.clear()
@@ -7,23 +6,34 @@ term.setCursorPos(1, 1)
 
 local OFFICIAL_REPO_BASE = "https://raw.githubusercontent.com/OsDEev/Xos/main/App/"
 
--- Function to convert GitHub web URL to direct RAW download URL
-local function parseGitHubURL(url)
-    if url:find("raw%.githubusercontent%.com") then
-        return url
+-- Parser function for GitHub & Pastebin URLs
+local function parseURL(input)
+    -- 1. Pastebin URL (https://pastebin.com/XXXXXX) or raw ID (8xyB9Ysr)
+    local pastebinId = input:match("pastebin%.com/raw/([%w]+)") or input:match("pastebin%.com/([%w]+)")
+    if pastebinId then
+        return "https://pastebin.com/raw/" .. pastebinId, pastebinId
     end
 
-    local user, repo, branch, filepath = url:match("github%.com/([^/]+)/([^/]+)/blob/([^/]+)/(%S+)")
+    -- If short 8-character Pastebin code is provided directly
+    if #input == 8 and not input:find("/") and not input:find("%.") then
+        return "https://pastebin.com/raw/" .. input, input
+    end
+
+    -- 2. GitHub Direct Raw
+    if input:find("raw%.githubusercontent%.com") then
+        local name = input:match("([^/]+)%.lua$") or input:match("([^/]+)$")
+        return input, name
+    end
+
+    -- 3. GitHub Web URL
+    local user, repo, branch, filepath = input:match("github%.com/([^/]+)/([^/]+)/blob/([^/]+)/(%S+)")
     if user and repo and branch and filepath then
-        return string.format("https://raw.githubusercontent.com/%s/%s/%s/%s", user, repo, branch, filepath)
+        local raw = string.format("https://raw.githubusercontent.com/%s/%s/%s/%s", user, repo, branch, filepath)
+        local name = filepath:match("([^/]+)$")
+        return raw, name
     end
 
-    user, repo, branch, filepath = url:match("^([^/]+)/([^/]+)/([^/]+)/(%S+)$")
-    if user and repo and branch and filepath then
-        return string.format("https://raw.githubusercontent.com/%s/%s/%s/%s", user, repo, branch, filepath)
-    end
-
-    return url
+    return nil, nil
 end
 
 -- Pac-Man ASCII Logo
@@ -35,13 +45,14 @@ print(" | \\====| |   ")
 print("  \\ `--` \\ -._")
 print("   `--`   `--` ")
 term.setTextColor(colors.lime)
-print("=== PAKKUGARU v2.0 (GitHub Parser) ===")
+print("=== PAKKUGARU v3.0 (Pastebin + GitHub) ===")
 print("  'The Package Gobbler' (paku-paku)")
 term.setTextColor(colors.white)
 print("\nCommands:")
 print(" - list")
-print(" - install <app_name>                   (From official Xos repo)")
-print(" - install <github_url_or_path> [name]  (From any GitHub repo)")
+print(" - install <app_name>              (Official Xos repo)")
+print(" - install <github_url> [name]     (GitHub repo)")
+print(" - install <pastebin_code_or_url> <name> (Pastebin)")
 print(" - remove <filename>")
 
 write("\npakkugaru> ")
@@ -64,50 +75,50 @@ if cmd == "list" then
     end
 
 elseif cmd == "install" then
-    local rawUrl = ""
+    local downloadUrl = ""
     local targetName = ""
 
     if not parts[2] then
         term.setTextColor(colors.red)
-        print("Error: Specify app name or GitHub URL!")
-    elseif parts[2]:find("github%.com") or parts[2]:find("/") then
-        rawUrl = parseGitHubURL(parts[2])
-        
-        if parts[3] then
-            targetName = parts[3]
-        else
-            targetName = parts[2]:match("([^/]+)%.lua$") or parts[2]:match("([^/]+)$") or "app"
-        end
+        print("Error: Specify app name, Pastebin code, or GitHub URL!")
     else
-        targetName = parts[2]
-        rawUrl = OFFICIAL_REPO_BASE .. targetName .. ".lua"
+        local parsedUrl, parsedName = parseURL(parts[2])
+
+        if parsedUrl then
+            downloadUrl = parsedUrl
+            targetName = parts[3] or parsedName or "app"
+        else
+            -- Default to Official Xos Repo
+            targetName = parts[2]
+            downloadUrl = OFFICIAL_REPO_BASE .. targetName .. ".lua"
+        end
     end
 
-    if rawUrl ~= "" and targetName ~= "" then
+    if downloadUrl ~= "" and targetName ~= "" then
         if not targetName:find("%.lua$") then
             targetName = targetName .. ".lua"
         end
 
         term.setTextColor(colors.yellow)
-        print("\n[+] Parsing & Gobbling from:")
+        print("\n[+] Downloading package from:")
         term.setTextColor(colors.lightGray)
-        print("    " .. rawUrl)
+        print("    " .. downloadUrl)
         term.setTextColor(colors.yellow)
         print("    Saving as: App/" .. targetName .. " ...")
 
-        local res = http.get(rawUrl)
+        local res = http.get(downloadUrl)
         if res then
             if not fs.exists("App") then fs.makeDir("App") end
             local f = fs.open("App/" .. targetName, "w")
             f.write(res.readAll())
             f.close()
             res.close()
-            
+
             term.setTextColor(colors.lime)
             print("\n[OK] Success! Package " .. targetName .. " installed to /App.")
         else
             term.setTextColor(colors.red)
-            print("\n[ERROR] Download failed. Check URL or network access.")
+            print("\n[ERROR] Download failed. Check URL/ID or network access.")
         end
     end
 
