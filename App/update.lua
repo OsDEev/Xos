@@ -1,31 +1,53 @@
--- App/update.lua - Dynamic Auto-Updater for Xos
+-- App/update.lua - Official System Updater for Xos Core
 term.setBackgroundColor(colors.black)
 term.clear()
 term.setCursorPos(1, 1)
 
-local API_URL = "https://api.github.com/repos/OsDEev/Xos/contents/"
 local RAW_URL = "https://raw.githubusercontent.com/OsDEev/Xos/main/"
 
 term.setTextColor(colors.cyan)
 print("==========================================")
-print("        Xos Dynamic Auto-Updater          ")
+print("        Xos Official System Updater       ")
 print("==========================================")
 term.setTextColor(colors.white)
 
-local function downloadFile(repoPath, localPath)
-    term.setTextColor(colors.yellow)
-    write("[SYNC] " .. localPath .. " ... ")
+-- Список всех системных файлов, входящих в состав Xos
+local systemFiles = {
+    -- Core & Boot files
+    "os.lua",
+    "startup.lua",
+    "install.lua",
 
-    local res = http.get(RAW_URL .. repoPath)
+    -- Official System Apps
+    "App/settings.lua",
+    "App/update.lua",
+    "App/terminal.lua",
+    "App/explorer.lua",
+    "App/localfile.lua",
+    "App/download.lua",
+    "App/pakkugaru.lua",
+    "App/calc.lua",
+    "App/network.lua"
+}
+
+local function updateSystemFile(path)
+    term.setTextColor(colors.yellow)
+    write("[UPDATE] " .. path .. " ... ")
+
+    local res = http.get(RAW_URL .. path)
     if res then
-        local dir = fs.getDir(localPath)
+        local dir = fs.getDir(path)
         if dir and dir ~= "" and not fs.exists(dir) then
             fs.makeDir(dir)
         end
-        local f = fs.open(localPath, "w")
-        f.write(res.readAll())
-        f.close()
+
+        local content = res.readAll()
         res.close()
+
+        local f = fs.open(path, "w")
+        f.write(content)
+        f.close()
+
         term.setTextColor(colors.lime)
         print("OK")
         return true
@@ -36,45 +58,32 @@ local function downloadFile(repoPath, localPath)
     end
 end
 
--- Скачивание файлов из папки через GitHub API
-local function syncDirectory(dirPath)
-    local url = API_URL .. (dirPath or "")
-    local res = http.get(url, { ["User-Agent"] = "ComputerCraft-Xos" })
-
-    if not res then
-        return false
-    end
-
-    local data = textutils.unserializeJSON(res.readAll())
-    res.close()
-
-    if type(data) ~= "table" then return false end
-
-    for _, item in ipairs(data) do
-        if item.type == "file" and item.name:find("%.lua$") then
-            local repoPath = dirPath ~= "" and (dirPath .. "/" .. item.name) or item.name
-            local localPath = repoPath
-            downloadFile(repoPath, localPath)
-        elseif item.type == "dir" and item.name == "App" then
-            syncDirectory("App")
-        end
-    end
-    return true
+if not http then
+    term.setTextColor(colors.red)
+    print("ERROR: HTTP API is disabled on this computer!")
+    print("Press Enter to return...")
+    read()
+    return
 end
 
-print("\nFetching current repository manifest from GitHub...\n")
+print("\nDownloading system updates from official repository...\n")
 
--- Обновляем файлы в корне (os.lua, install.lua) и всю папку App/
-local okCore = downloadFile("os.lua", "os.lua")
-local okApps = syncDirectory("App")
+local successCount = 0
+local totalFiles = #systemFiles
+
+for _, filePath in ipairs(systemFiles) do
+    if updateSystemFile(filePath) then
+        successCount = successCount + 1
+    end
+end
 
 print("\n==========================================")
-if okCore and okApps then
+if successCount == totalFiles then
     term.setTextColor(colors.lime)
-    print(" Update Complete! All system files synced.")
+    print(" System Update Complete! All core files updated.")
 else
     term.setTextColor(colors.yellow)
-    print(" Update finished with basic files (API limit fallback).")
+    print(" Updated " .. successCount .. " of " .. totalFiles .. " system files.")
 end
 term.setTextColor(colors.white)
 print(" Press Enter to return to Xos...")
