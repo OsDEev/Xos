@@ -1,16 +1,68 @@
--- install.lua - Installer with Custom Profiles & Auto-Updater setup for Xos
--- Repository: https://github.com/OsDEev/Xos
-
+-- install.lua - Xos System Installer with Label Setup
 term.setBackgroundColor(colors.black)
 term.clear()
 term.setCursorPos(1, 1)
 
-local REPO_RAW = "https://raw.githubusercontent.com/OsDEev/Xos/main/"
+local RAW_URL = "https://raw.githubusercontent.com/OsDEev/Xos/main/"
 
-local function downloadFile(repoPath, localPath)
-    term.setTextColor(colors.yellow)
-    print("[GET] " .. repoPath .. " -> " .. localPath)
-    local res = http.get(REPO_RAW .. repoPath)
+term.setTextColor(colors.cyan)
+print("==========================================")
+print("        Xos Operating System Installer    ")
+print("==========================================")
+term.setTextColor(colors.white)
+
+-- 1. Запрос и установка Label для ПК
+local currentLabel = os.getComputerLabel()
+print("\nCurrent Computer Label: " .. (currentLabel or "None"))
+write("Enter new Computer Label (Press Enter to keep current): ")
+local newLabel = read()
+
+if newLabel and newLabel ~= "" then
+    os.setComputerLabel(newLabel)
+    term.setTextColor(colors.lime)
+    print("-> Label set to: " .. newLabel)
+elseif currentLabel then
+    term.setTextColor(colors.lime)
+    print("-> Keeping label: " .. currentLabel)
+else
+    os.setComputerLabel("Xos-PC")
+    term.setTextColor(colors.lime)
+    print("-> Default label set: Xos-PC")
+end
+
+term.setTextColor(colors.white)
+print("\nSelect Installation Profile:")
+print("1. Full (OS + All Apps + Autorun)")
+print("2. Minimal (OS Kernel only)")
+write("\nChoice (1-2): ")
+
+local choice = read()
+
+local filesToDownload = {}
+
+if choice == "2" then
+    filesToDownload = {
+        { repo = "os.lua", localPath = "os.lua" }
+    }
+else
+    filesToDownload = {
+        { repo = "os.lua", localPath = "os.lua" },
+        { repo = "App/explorer.lua", localPath = "App/explorer.lua" },
+        { repo = "App/terminal.lua", localPath = "App/terminal.lua" },
+        { repo = "App/settings.lua", localPath = "App/settings.lua" },
+        { repo = "App/pakkugaru.lua", localPath = "App/pakkugaru.lua" },
+        { repo = "App/localfile.lua", localPath = "App/localfile.lua" },
+        { repo = "App/download.lua", localPath = "App/download.lua" },
+        { repo = "App/network.lua", localPath = "App/network.lua" },
+        { repo = "App/update.lua", localPath = "App/update.lua" }
+    }
+end
+
+print("\nStarting installation...\n")
+
+local function download(repoPath, localPath)
+    write("[DOWNLOADING] " .. localPath .. " ... ")
+    local res = http.get(RAW_URL .. repoPath)
     if res then
         local dir = fs.getDir(localPath)
         if dir and dir ~= "" and not fs.exists(dir) then
@@ -21,88 +73,44 @@ local function downloadFile(repoPath, localPath)
         f.close()
         res.close()
         term.setTextColor(colors.lime)
-        print(" [OK] Success")
+        print("OK")
+        term.setTextColor(colors.white)
         return true
     else
         term.setTextColor(colors.red)
-        print(" [FAIL] Could not download: " .. repoPath)
+        print("FAIL")
+        term.setTextColor(colors.white)
         return false
     end
 end
 
-term.setTextColor(colors.cyan)
-print("==========================================")
-print("       Xos Installation Wizard v3.0       ")
-print("==========================================")
-term.setTextColor(colors.white)
-print("\nSelect Installation Profile:")
-print(" [1] Full OS (Core + All Utilities & Apps)")
-print(" [2] Minimal Core (Kernel + Pakkugaru)")
-print(" [3] Server Node (Core + localfile host)")
-print(" [4] Cancel")
-
-write("\nSelect option (1-4): ")
-local choice = read()
-
-local filesToDownload = {}
-
-if choice == "1" then
-    filesToDownload = {
-        { repo = "os.lua", localP = "os.lua" },
-        { repo = "App/pakkugaru.lua", localP = "App/pakkugaru.lua" },
-        { repo = "App/network.lua", localP = "App/network.lua" },
-        { repo = "App/localfile.lua", localP = "App/localfile.lua" },
-        { repo = "App/download.lua", localP = "App/download.lua" },
-        { repo = "App/update.lua", localP = "App/update.lua" }
-    }
-elseif choice == "2" then
-    filesToDownload = {
-        { repo = "os.lua", localP = "os.lua" },
-        { repo = "App/pakkugaru.lua", localP = "App/pakkugaru.lua" },
-        { repo = "App/update.lua", localP = "App/update.lua" }
-    }
-elseif choice == "3" then
-    filesToDownload = {
-        { repo = "os.lua", localP = "os.lua" },
-        { repo = "App/network.lua", localP = "App/network.lua" },
-        { repo = "App/localfile.lua", localP = "App/localfile.lua" },
-        { repo = "App/update.lua", localP = "App/update.lua" }
-    }
-else
-    term.setTextColor(colors.yellow)
-    print("\nInstallation aborted.")
-    return
-end
-
-print("\nStarting installation...\n")
-
-local successCount = 0
+local success = true
 for _, item in ipairs(filesToDownload) do
-    if downloadFile(item.repo, item.localP) then
-        successCount = successCount + 1
+    if not download(item.repo, item.localPath) then
+        success = false
     end
 end
 
--- Create startup script for auto-boot
-term.setTextColor(colors.cyan)
-print("\nConfiguring startup script...")
-local startupFile = fs.open("startup.lua", "w")
-startupFile.write([[
--- Auto-start Xos Kernel
-if fs.exists("os.lua") then
-    shell.run("os.lua")
-else
-    print("Xos Kernel missing!")
+-- Создаем startup.lua для автозагрузки
+local startup = fs.open("startup.lua", "w")
+if startup then
+    startup.writeLine('-- Xos Autorun')
+    startup.writeLine('shell.run("os.lua")')
+    startup.close()
+    print("[CONFIG] Created startup.lua")
 end
-]])
-startupFile.close()
 
-term.setTextColor(colors.lime)
 print("\n==========================================")
-print(string.format(" Installed %d/%d components successfully!", successCount, #filesToDownload))
-print(" Startup file created as 'startup.lua'")
-print(" Press Enter to launch Xos now...")
-print("==========================================")
+if success then
+    term.setTextColor(colors.lime)
+    print(" Installation finished successfully!")
+    print(" Computer Label: " .. (os.getComputerLabel() or "Xos-PC"))
+    print(" Rebooting in 3 seconds...")
+    sleep(3)
+    os.reboot()
+else
+    term.setTextColor(colors.yellow)
+    print(" Installation finished with errors.")
+    print(" Run 'os.lua' manually to start.")
+end
 term.setTextColor(colors.white)
-read()
-shell.run("os.lua")
